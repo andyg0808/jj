@@ -15,6 +15,11 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * The `ui.allow-filesets` configuration option has been removed.
   [The "fileset" language](docs/filesets.md) has been enabled by default since v0.20.
 
+* `jj split` no longer moves bookmarks to the second revision created by the
+  split. Local bookmarks associated with the target revision will point to the
+  first revision (which inherits the target revision's change id) created by the
+  split. [#3419](https://github.com/jj-vcs/jj/issues/3419)
+
 ### Deprecations
 
 ### New features

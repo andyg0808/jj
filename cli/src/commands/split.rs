@@ -43,6 +43,9 @@ use crate::ui::Ui;
 /// description, the second part will not get a description, and you will be
 /// asked for a description only for the first part.
 ///
+/// The first revision created by the split inherits the change id of the target
+/// revision and any local bookmarks associated with it.
+///
 /// Splitting an empty commit is not supported because the same effect can be
 /// achieved with `jj new`.
 #[derive(clap::Args, Clone, Debug)]
@@ -196,26 +199,25 @@ The remainder will be in the second commit.
         commit_builder.write(tx.repo_mut())?
     };
 
-    // Mark the commit being split as rewritten to the second commit. As a
-    // result, if @ points to the commit being split, it will point to the
-    // second commit after the command finishes. This also means that any
-    // bookmarks pointing to the commit being split are moved to the second
-    // commit.
-    tx.repo_mut()
-        .set_rewritten_commit(commit.id().clone(), second_commit.id().clone());
     let mut num_rebased = 0;
     tx.repo_mut()
         .transform_descendants(vec![commit.id().clone()], |mut rewriter| {
             num_rebased += 1;
             if args.parallel {
-                rewriter
-                    .replace_parent(second_commit.id(), [first_commit.id(), second_commit.id()]);
+                rewriter.replace_parent(first_commit.id(), [first_commit.id(), second_commit.id()]);
+            } else {
+                rewriter.replace_parent(first_commit.id(), [second_commit.id()]);
             }
-            // We don't need to do anything special for the non-parallel case
-            // since we already marked the original commit as rewritten.
             rewriter.rebase()?.write()?;
             Ok(())
         })?;
+    // Move the working copy commit (@) to the second commit for any workspaces
+    // where the target commit is the working copy commit.
+    for (workspace_id, working_copy_commit) in tx.base_repo().clone().view().wc_commit_ids() {
+        if working_copy_commit == commit.id() {
+            tx.repo_mut().edit(workspace_id.clone(), &second_commit)?;
+        }
+    }
 
     if let Some(mut formatter) = ui.status_formatter() {
         if num_rebased > 0 {
